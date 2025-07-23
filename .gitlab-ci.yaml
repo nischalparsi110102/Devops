@@ -1,0 +1,108 @@
+name: Basic DevSecOps Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dependency-list:
+    name: List Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: List dependencies (npm example)
+        run: |
+          npm ci
+          npm list --all
+
+  version-check:
+    name: Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Show Version
+        run: |
+          node --version
+          npm --version
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run linter
+        run: |
+          npm ci
+          npm run lint
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: |
+          npm ci
+          npm test
+
+  publish:
+    name: Publish (tag/release NPM example)
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      - name: npm publish (dry-run for safety)
+        run: |
+          npm install
+          npm run build
+          npm publish --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Uncomment below for actual publish
+      # - name: npm publish
+      #   run: |
+      #     npm install
+      #     npm run build
+      #     npm publish
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  notify:
+    name: Notify on Success
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: success()
+    steps:
+      - name: Slack notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_USERNAME: 'GitHub Actions'
+          SLACK_ICON_EMOJI: ':rocket:'
+          SLACK_COLOR: '#36a64f'
+          SLACK_MESSAGE: |
+            CI: ${{ github.workflow }}
+            Branch: ${{ github.ref }}
+            Status: ${{ job.status }}
+
+  notify-fail:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [publish]
+    if: failure()
+    steps:
+      - name: Slack notification (fail)
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_USERNAME: 'GitHub Actions'
+          SLACK_ICON_EMOJI: ':x:'
+          SLACK_COLOR: '#ef5350'
+          SLACK_MESSAGE: |
+            CI: ${{ github.workflow }}
+            Branch: ${{ github.ref }}
+            Status: Failed! Please check the pipeline.
